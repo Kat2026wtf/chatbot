@@ -7,6 +7,9 @@ from google import genai
 from supabase import create_client
 
 app = FastAPI()
+@app.get("/")
+def read_root():
+    return {"message": "Chatbot Backend is live! Use /api/sync to sync files."}
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
