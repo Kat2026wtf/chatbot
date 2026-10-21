@@ -38,11 +38,9 @@ def chat(req: ChatRequest):
         # Query Supabase DB table for allowed files
         files_res = supabase.table("chatbot_files").select("*").in_("access_level", allowed_levels).execute()
         
-    
-      # Fallback if no specific DB metadata exists: list storage directly
+        # Use database metadata directly
         if not files_res.data:
-            storage_files = supabase.storage.from_("chatbot_files").list("")
-            file_list = [f["name"] for f in storage_files]
+            file_list = []
         else:
             file_list = [f["file_name"] for f in files_res.data]
 
@@ -54,5 +52,5 @@ def chat(req: ChatRequest):
 
         return {"reply": response.text, "sources_used": file_list}
 
-    except Exception as e:
+    except Exception as `e`:
         raise HTTPException(status_code=500, detail=str(e))
