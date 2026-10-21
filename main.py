@@ -7,9 +7,6 @@ from google import genai
 from supabase import create_client
 
 app = FastAPI()
-@app.get("/")
-def read_root():
-    return {"message": "Chatbot Backend is live! Use /api/sync to sync files."}
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -19,11 +16,38 @@ class ChatRequest(BaseModel):
     query: str
     is_admin: bool = False
 
+@app.get("/")
+def read_root():
+    return {"message": "Chatbot Backend is live! Use /api/sync to sync files."}
+
+def get_access_token():
+    """Automatically fetches a fresh Microsoft Graph access token using the refresh token."""
+    tenant_id = os.getenv("AZURE_TENANT_ID", "common")
+    token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+    
+    payload = {
+        "client_id": os.getenv("AZURE_CLIENT_ID"),
+        "client_secret": os.getenv("AZURE_CLIENT_SECRET"),
+        "refresh_token": os.getenv("ONEDRIVE_REFRESH_TOKEN"),
+        "grant_type": "refresh_token",
+        "scope": "Files.ReadWrite.All offline_access"
+    }
+    
+    response = requests.post(token_url, data=payload)
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to refresh Microsoft token: {response.text}"
+        )
+    
+    return response.json().get("access_token")
+
 @app.get("/api/sync")
 def sync_onedrive():
     """Reads her OneDrive folder and updates Supabase automatically via Microsoft Graph API"""
     try:
-        token = os.getenv("ONEDRIVE_ACCESS_TOKEN")
+        # Automatically get a fresh token every time sync is called
+        token = get_access_token()
         folder_name = os.getenv("CLIENT_FOLDER_PATH", "ClientChatbotData")
 
         headers = {"Authorization": f"Bearer {token}"}
@@ -39,19 +63,16 @@ def sync_onedrive():
         items = data.get("value", [])
 
         for item in items:
-            # Check if it's a folder (e.g., 'Public' or 'Private')
             if "folder" in item:
                 subfolder_name = item["name"].lower()
                 sub_id = item["id"]
 
-                # Fetch files inside this subfolder
                 sub_files_url = f"https://graph.microsoft.com/v1.0/me/drive/items/{sub_id}/children"
                 sub_res = requests.get(sub_files_url, headers=headers)
 
                 if sub_res.status_code == 200:
                     sub_items = sub_res.json().get("value", [])
                     for sub_item in sub_items:
-                        # If it's a file, upsert into Supabase
                         if "file" in sub_item:
                             file_name = sub_item["name"]
                             file_path = f"/{folder_name}/{item['name']}/{file_name}"
@@ -63,7 +84,7 @@ def sync_onedrive():
                                 "access_level": level
                             }, on_conflict="file_path").execute()
 
-        return {"status": "Successfully synced her OneDrive folder!"}
+        return {"status": "Successfully synced her OneDrive folder with auto-refreshed token!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
