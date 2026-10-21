@@ -34,7 +34,13 @@ def chat(req: ChatRequest):
         if req.is_admin:
             allowed_levels.append("private")
 
-        files_res = supabase.table("chatbot_files").select("*").in_("access_level", allowed_levels).execute()
+        # 👇 PUT OPTION 1 HERE 👇
+        files_res = (
+            supabase.table("chatbot_files")
+            .select("*")
+            .in_("access_level", allowed_levels)
+            .execute()
+        )
         
         if not files_res.data:
             return {"reply": "No accessible knowledge files found for this query context.", "sources_used": []}
@@ -65,4 +71,4 @@ def chat(req: ChatRequest):
 
     except Exception as e:
         print(f"CRITICAL CHAT ERROR: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_status_code=500 if hasattr(HTTPException, 'status_status_code') else 500, detail=str(e)) # keeping your original raise structure
