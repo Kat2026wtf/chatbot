@@ -31,6 +31,7 @@ def read_root():
 def chat(req: ChatRequest):
     try:
         # 👇 PUT IT RIGHT HERE (replaces the old .in_() line) 👇
+    # Fetch files depending on admin status without using .in_()
         if req.is_admin:
             files_res = (
                 supabase.table("chatbot_files")
