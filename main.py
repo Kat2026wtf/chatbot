@@ -30,38 +30,32 @@ def read_root():
 @app.post("/api/chat")
 def chat(req: ChatRequest):
     try:
-        # 1. Determine allowed access levels based on admin status
         allowed_levels = ["public"]
         if req.is_admin:
             allowed_levels.append("private")
 
-        # 2. Query Supabase DB table for allowed files
         files_res = supabase.table("chatbot_files").select("*").in_("access_level", allowed_levels).execute()
         
         if not files_res.data:
             return {"reply": "No accessible knowledge files found for this query context.", "sources_used": []}
 
         file_list = [f["file_name"] for f in files_res.data]
-
-        # 3. Gather text prompt and download image bytes from Supabase Storage
         content_parts = []
         
+        # Build file list description and collect public image URLs for Gemini Vision
         for file_name in file_list:
             try:
-                # Download file bytes from Supabase Storage bucket
-                file_bytes = supabase.storage.from_("chatbot_files").download(file_name)
-                if file_bytes:
-                    content_parts.append({
-                        "mime_type": "image/jpeg",
-                        "data": file_bytes
-                    })
-            except Exception as storage_err:
-                print(f"Could not download {file_name}: {storage_err}")
+                # Get the public URL instead of raw bytes download
+                public_url_res = supabase.storage.from_("chatbot_files").get_public_url(file_name)
+                if public_url_res:
+                    content_parts.append(f"Image File Name: {file_name}, Public URL: {public_url_res}")
+            except Exception as url_err:
+                print(f"Could not get URL for {file_name}: {url_err}")
 
-        # Add the user's text question to the payload
-        content_parts.append(req.query)
+        # Add the user's question and context
+        prompt_text = f"Available files context: {file_list}. User Query: {req.query}"
+        content_parts.append(prompt_text)
 
-        # 4. Send multimodal payload (Images + Text) to Gemini 2.5 Flash
         response = gemini_client.models.generate_content(
             model='gemini-2.5-flash', 
             contents=content_parts
@@ -70,5 +64,5 @@ def chat(req: ChatRequest):
         return {"reply": response.text, "sources_used": file_list}
 
     except Exception as e:
-        print(f"Backend Chat Error: {str(e)}")
+        print(f"CRITICAL CHAT ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
